@@ -24,7 +24,7 @@ def deploy_contract(contract_json, *params, gas: int = 11000000, keys: Keys, get
     transaction = contract.constructor(*params).build_transaction(
         {'from': keys.address, 'nonce': nonce, 'gas': gas, 'value': value})
     signed_txn = w3.eth.account.sign_transaction(transaction, keys.priv_key)
-    tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+    tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     return receipt.contractAddress
 
@@ -36,7 +36,7 @@ def transact_function(contract_address, contract_abi, function_name, *params, ga
     transaction = contract.functions[function_name](*params).build_transaction(
         {"from": keys.address, 'nonce': nonce, 'gas': gas, 'value': value})
     signed_txn = w3.eth.account.sign_transaction(transaction, keys.priv_key)
-    tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+    tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     if verbose:
         print(
