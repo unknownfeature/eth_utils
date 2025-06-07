@@ -1,0 +1,4 @@
+web3
+rlp
+eth-hash[auto]
+eth-typing
