@@ -35,7 +35,7 @@ To get started with this library, you'll need Python 3.8+ and the necessary depe
 2.  **Install dependencies:**
 
     ```bash
-    pip install web3 rlp eth-hash[auto] eth-typing
+    pip install web3 rlp eth-hash[auto] eth-typing python-snarks
     ```
     or
     ```bash
@@ -45,7 +45,7 @@ To get started with this library, you'll need Python 3.8+ and the necessary depe
     * `rlp`: Used for Recursive Length Prefix encoding, fundamental to Ethereum's data serialization.
     * `eth-hash[auto]`: Provides the Keccak hashing algorithm.
     * `eth-typing`: Ethereum-specific type annotations.
-
+    * `python-snarks`: experimental library for zk proofs
 ---
 
 ## Usage

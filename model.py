@@ -62,6 +62,42 @@ class AccessTuple:
         return [self.addr, self.storage_keys]
 
 
+class BlobSidecar:
+    def __init__(self, blobs: list[bytes], commitments: list[bytes], proofs: list[bytes]):
+        """
+        Initializes a BlobSidecar object.
+
+        A BlobSidecar is a structure used in Ethereum's EIP-4844 (Proto-Danksharding)
+        to carry the actual blob data, its KZG commitment, and the corresponding KZG proof.
+        This data is gossiped on the consensus layer separately from the execution layer
+        transaction, which only references the blobs via their versioned hashes.
+
+        Args:
+            blobs: A list of raw blob data, where each blob is 131,072 bytes (128 KB)
+                   and padded with zeros if the original content was smaller.
+            commitments: A list of KZG commitments, each a 48-byte value,
+                         cryptographically committing to the corresponding blob.
+            proofs: A list of KZG proofs, each a 48-byte value, proving that
+                    the commitment correctly represents its blob.
+        """
+        self.blobs = blobs
+        self.commitments = commitments
+        self.proofs = proofs
+
+    def encode(self) -> list:
+        """
+        Encodes the BlobSidecar into a list format suitable for serialization
+        or transmission (e.g., for RPC calls or RLP encoding in some contexts).
+
+        Returns:
+            A list containing three elements:
+            - The list of blobs (bytes).
+            - The list of KZG commitments (bytes).
+            - The list of KZG proofs (bytes).
+        """
+        return [self.blobs, self.commitments, self.proofs]
+
+
 class BlobTx:
     """
     Represents an Ethereum EIP-4844 "Blob Transaction" (Type 3 transaction),
@@ -70,7 +106,7 @@ class BlobTx:
     """
 
     def __init__(self, tx_params: BasetTxParams, acc_list: list[list],
-                 blob_fee_cap: int, blob_hashes: list[bytes]):
+                 blob_fee_cap: int, blob_hashes: list[bytes], sidecar: BlobSidecar):
         """
         Initializes a BlobTx object.
 
@@ -84,6 +120,7 @@ class BlobTx:
         self.acc_list = acc_list
         self.blob_fee_cap = blob_fee_cap
         self.blob_hashes = blob_hashes
+        self.sidecar = sidecar
 
     def hash(self) -> bytes:
         """
@@ -98,8 +135,8 @@ class BlobTx:
         encoded = b'\x03' + rlp.encode(
             [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip, self.tx_params.gas_fee,
              self.tx_params.gas, self.tx_params.to, self.tx_params.value, self.tx_params.data, self.acc_list,
-             self.blob_fee_cap, self.blob_hashes])
-        return keccak(encoded) # Computes the Keccak-256 hash of the encoded transaction.
+             self.blob_fee_cap, self.blob_hashes, self.sidecar.encode()])
+        return keccak(encoded)  # Computes the Keccak-256 hash of the encoded transaction.
 
     def encode_with_sig(self, v: int, r: bytes, s: bytes) -> bytes:
         """
@@ -120,7 +157,8 @@ class BlobTx:
         encoded = b'\x03' + rlp.encode(
             [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip, self.tx_params.gas_fee,
              self.tx_params.gas, self.tx_params.to, self.tx_params.value, self.tx_params.data, self.acc_list,
-             self.blob_fee_cap, self.blob_hashes, v, r, s]) # v is directly included here, unlike EIP-1559 where it's part of the raw signature
+             self.blob_fee_cap, self.blob_hashes, self.sidecar.encode(), v, r,
+             s])  # v is directly included here, unlike EIP-1559 where it's part of the raw signature
         return encoded
 
 
@@ -202,7 +240,7 @@ class SetCodeTx:
             [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip, self.tx_params.gas_fee,
              self.tx_params.gas, self.tx_params.to, self.tx_params.value, self.tx_params.data, self.acc_list,
              self.set_code_auth_list])
-        return keccak(encoded) # Computes the Keccak-256 hash.
+        return keccak(encoded)  # Computes the Keccak-256 hash.
 
     def encode_with_sig(self, v: int, r: bytes, s: bytes) -> bytes:
         """
