@@ -22,26 +22,31 @@ trusted_setup_location = 'trusted_setup.txt'
 with open(trusted_setup_location, 'w') as fl:
     fl.write(requests.get('https://raw.githubusercontent.com/ethereum/c-kzg-4844/37140215cd6fcd99363b7f02bf52f8bf7f6f5968/src/trusted_setup.txt').text)
 
-# loadind trusted setup
+# loading default trusted setup
 kzg_settings = load_trusted_setup(trusted_setup_location, 6)
 
-
-def prepare_blob_data(input_data: str) -> bytes:
+def init(another_location):
     """
-    Prepares the input string data into a 128KB blob (padded).
+    Re-initializes trusted setup with another settings
+    :param another_location:
+    :return:
+    """
+    global kzg_settings
+    kzg_settings = load_trusted_setup(another_location, 6)
+
+def prepare_blob_data(input_data: bytes) -> bytes:
+    """
+    Prepares the input data into a 128KB blob (padded).
     Blobs are conceptually 4096 field elements, each 32 bytes.
     The input data should be byte-encoded and then padded.
     """
-    # Convert input string to bytes
-    encoded_data = input_data.encode('utf-8')
-
     # Calculate padding needed
     # A blob must be exactly BLOB_FULL_SIZE_BYTES
-    if len(encoded_data) > BLOB_FULL_SIZE_BYTES:
+    if len(input_data) > BLOB_FULL_SIZE_BYTES:
         raise ValueError(f"Input data too large for a single blob. Max: {BLOB_FULL_SIZE_BYTES} bytes")
 
     # Pad with zeros
-    padded_data = encoded_data + b'\x00' * (BLOB_FULL_SIZE_BYTES - len(encoded_data))
+    padded_data = input_data + b'\x00' * (BLOB_FULL_SIZE_BYTES - len(input_data))
     return padded_data
 
 
@@ -54,7 +59,54 @@ def kzg_to_versioned_hash(kzg_commitment: bytes) -> bytes:
     versioned_hash = bytes([VERSIONED_HASH_VERSION_KZG]) + sha256_hash[1:]
     return versioned_hash
 
-padded_blob_bytes = prepare_blob_data('123456')
-kzg_commitment = blob_to_kzg_commitment(padded_blob_bytes, kzg_settings)
-kzg_proof = compute_blob_kzg_proof(padded_blob_bytes, kzg_commitment, kzg_settings)
-print(verify_blob_kzg_proof(padded_blob_bytes, kzg_commitment, kzg_proof, kzg_settings))
+
+def blob_commitment_and_proof(blob: bytes, verify=True) -> (bytes, bytes, bytes):
+    """
+    Generates a KZG commitment and a KZG proof for a given blob of data,
+    and optionally verifies the proof against the commitment.
+
+    This function is fundamental to Ethereum's EIP-4844 (Proto-Danksharding)
+    where blobs of data are committed to, and a proof is provided to allow
+    verifiers to check the data's integrity without needing the full blob.
+
+    Args:
+        blob (bytes): The raw blob data (pre-padding). This data will be
+                      prepared (padded) for KZG computations.
+        verify (bool, optional): If True, the generated proof will be verified
+                                 against the commitment immediately after generation.
+                                 Defaults to True.
+
+    Returns:
+        tuple[bytes, bytes]: A tuple containing:
+                             - The KZG commitment (32 bytes).
+                             - The KZG proof (48 bytes).
+                             If `verify` is True and the verification fails,
+                             it returns (None, None).
+    """
+    # Step 1: Prepare the blob data. This typically involves padding the blob
+    # to a specific size required by the KZG polynomial, and possibly converting
+    # it into field elements.
+    padded_blob_bytes = prepare_blob_data(blob)
+
+    # Step 2: Compute the KZG commitment. This is a short cryptographic commitment
+    # to the entire padded blob, allowing anyone to verify the blob's content
+    # efficiently without storing the full blob. It's computed from the padded
+    # blob and the KZG settings (public parameters).
+    kzg_commitment = blob_to_kzg_commitment(padded_blob_bytes, kzg_settings)
+
+    # Step 3: Compute the KZG proof. This proof demonstrates that a specific
+    # point on the polynomial (derived from the blob) evaluates correctly,
+    # thereby proving the integrity of the blob against its commitment.
+    kzg_proof = compute_blob_kzg_proof(padded_blob_bytes, kzg_commitment, kzg_settings)
+
+    # Step 4: Optional Verification.
+    # If `verify` is True, it immediately checks if the generated proof is valid
+    # for the commitment and the padded blob. This is a self-integrity check.
+    if verify and not verify_blob_kzg_proof(padded_blob_bytes, kzg_commitment, kzg_proof, kzg_settings):
+        # If verification fails, return None for both commitment and proof,
+        # indicating a problem in the generation or a mismatch.
+        return None, None, None
+
+    # If verification is skipped or successful, return the generated commitment and proof.
+    return padded_blob_bytes, kzg_commitment, kzg_proof
+

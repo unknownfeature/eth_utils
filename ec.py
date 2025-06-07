@@ -231,3 +231,24 @@ class Client:
         """
         # Fetches the 'latest' block and extracts the 'baseFeePerGas' field.
         return self.w3.eth.get_block('latest')['baseFeePerGas']
+
+    def get_base_fee_per_blob_gas(self) -> int:
+        """
+        Retrieves the `baseFeePerBlobGas` from the latest Ethereum block.
+
+        This value, introduced with EIP-4844 (Proto-Danksharding), represents
+        the current base fee required to include blob data in a transaction.
+        It dynamically adjusts based on network congestion for blob space.
+
+        Returns:
+            int: The `baseFeePerBlobGas` of the latest block in Wei.
+
+        Raises:
+            AttributeError: If the connected Ethereum node is not Dencun-upgraded
+                            or the block does not contain `baseFeePerBlobGas`.
+                            (This method assumes the field will exist.)
+            Exception: For other potential issues like network connectivity errors.
+        """
+
+        return self.w3.eth.blob_base_fee
+

@@ -2,7 +2,7 @@ import rlp
 from eth_hash.auto import keccak
 
 
-class BasetTxParams:
+class BaseTxParams:
     """
     Represents the base parameters for an Ethereum transaction, compatible with
     EIP-1559 (London upgrade) transaction types which include gas tip and fee caps.
@@ -10,7 +10,7 @@ class BasetTxParams:
 
     def __init__(self, chain_id: int, nonce: int, gas: int, gas_tip_cap: int, gas_fee_cap: int,
                  to=bytes.fromhex('0000000000000000000000000000000000000000'), value=0,
-                 data=b''):
+                 data=b'', gas_limit=None):
         """
         Initializes the base transaction parameters.
 
@@ -27,11 +27,12 @@ class BasetTxParams:
         self.chain_id = chain_id
         self.nonce = nonce
         self.gas = gas
-        self.gas_tip = gas_tip_cap  # Renamed for consistency with EIP-1559 terminology (maxPriorityFeePerGas)
-        self.gas_fee = gas_fee_cap  # Renamed for consistency with EIP-1559 terminology (maxFeePerGas)
+        self.gas_tip_cap = gas_tip_cap
+        self.gas_fee_cap = gas_fee_cap
         self.to = to
         self.value = value
         self.data = data
+        self.gas_limit = gas_limit
 
 
 class AccessTuple:
@@ -52,7 +53,7 @@ class AccessTuple:
         self.storage_keys = storage_keys
         self.addr = addr
 
-    def encode(self) -> list:
+    def list(self) -> list:
         """
         Encodes the AccessTuple into a list suitable for RLP encoding.
 
@@ -84,18 +85,6 @@ class BlobSidecar:
         self.commitments = commitments
         self.proofs = proofs
 
-    def encode(self) -> list:
-        """
-        Encodes the BlobSidecar into a list format suitable for serialization
-        or transmission (e.g., for RPC calls or RLP encoding in some contexts).
-
-        Returns:
-            A list containing three elements:
-            - The list of blobs (bytes).
-            - The list of KZG commitments (bytes).
-            - The list of KZG proofs (bytes).
-        """
-        return [self.blobs, self.commitments, self.proofs]
 
 
 class BlobTx:
@@ -105,13 +94,13 @@ class BlobTx:
     data blobs for scalability improvements, primarily for Layer 2 rollups.
     """
 
-    def __init__(self, tx_params: BasetTxParams, acc_list: list[list],
+    def __init__(self, tx_params: BaseTxParams, acc_list: list[list],
                  blob_fee_cap: int, blob_hashes: list[bytes], sidecar: BlobSidecar):
         """
         Initializes a BlobTx object.
 
         Args:
-            tx_params (BasetTxParams): The base transaction parameters for the transaction.
+            tx_params (BaseTxParams): The base transaction parameters for the transaction.
             acc_list (list[list]): The access list for the transaction, a list of encoded AccessTuples.
             blob_fee_cap (int): The maximum fee per gas unit for blob data.
             blob_hashes (list[bytes]): A list of Keccak-256 hashes of the commitment to the blobs associated with this transaction.
@@ -132,13 +121,13 @@ class BlobTx:
         """
         # RLP-encodes the transaction components as specified by EIP-4844 for hashing.
         # The '\x03' prefix denotes a Type 3 (Blob) transaction.
-        encoded = b'\x03' + rlp.encode(
-            [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip, self.tx_params.gas_fee,
+        encoded =  b'\x03' +  rlp.encode(
+            [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip_cap, self.tx_params.gas_fee_cap,
              self.tx_params.gas, self.tx_params.to, self.tx_params.value, self.tx_params.data, self.acc_list,
-             self.blob_fee_cap, self.blob_hashes, self.sidecar.encode()])
+             self.blob_fee_cap, self.blob_hashes])
         return keccak(encoded)  # Computes the Keccak-256 hash of the encoded transaction.
 
-    def encode_with_sig(self, v: int, r: bytes, s: bytes) -> bytes:
+    def encode(self, v: int, r: bytes, s: bytes) -> bytes:
         """
         Encodes the BlobTx into its raw, signed RLP format, ready for broadcasting to the network.
         Includes the signature components (v, r, s).
@@ -155,10 +144,10 @@ class BlobTx:
         # The '\x03' prefix denotes a Type 3 (Blob) transaction.
         # Note: '\x01' is likely a placeholder or specific encoding related to the signature in this custom context.
         encoded = b'\x03' + rlp.encode(
-            [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip, self.tx_params.gas_fee,
+            [[self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip_cap, self.tx_params.gas_fee_cap,
              self.tx_params.gas, self.tx_params.to, self.tx_params.value, self.tx_params.data, self.acc_list,
-             self.blob_fee_cap, self.blob_hashes, self.sidecar.encode(), v, r,
-             s])  # v is directly included here, unlike EIP-1559 where it's part of the raw signature
+             self.blob_fee_cap, self.blob_hashes, v, r, s],
+              self.sidecar.blobs, self.sidecar.commitments, self.sidecar.proofs])  # v is directly included here, unlike EIP-1559 where it's part of the raw signature
         return encoded
 
 
@@ -193,7 +182,7 @@ class SetCodeAuthorization:
         self.s = signed_msg.s  # The 's' component of the signature.
         self.v = signed_msg.v  # The 'v' component of the signature.
 
-    def encode(self) -> list:
+    def list(self) -> list:
         """
         Encodes the SetCodeAuthorization into a list suitable for RLP encoding within a transaction.
 
@@ -212,13 +201,13 @@ class SetCodeTx:
     scheme or protocol extension. It includes a list of `SetCodeAuthorization` objects.
     """
 
-    def __init__(self, tx_params: BasetTxParams, acc_list: list[list],
+    def __init__(self, tx_params: BaseTxParams, acc_list: list[list],
                  set_code_auth_list: list[list]):
         """
         Initializes a SetCodeTx object.
 
         Args:
-            tx_params (BasetTxParams): The base transaction parameters.
+            tx_params (BaseTxParams): The base transaction parameters.
             acc_list (list[list]): The access list for the transaction, a list of encoded AccessTuples.
             set_code_auth_list (list[list]): A list of encoded `SetCodeAuthorization` objects required for this transaction.
         """
@@ -237,12 +226,12 @@ class SetCodeTx:
         # RLP-encodes the transaction components for hashing.
         # The '\x04' prefix denotes a Type 4 (custom SetCode) transaction.
         encoded = b'\x04' + rlp.encode(
-            [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip, self.tx_params.gas_fee,
+            [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip_cap, self.tx_params.gas_fee_cap,
              self.tx_params.gas, self.tx_params.to, self.tx_params.value, self.tx_params.data, self.acc_list,
              self.set_code_auth_list])
         return keccak(encoded)  # Computes the Keccak-256 hash.
 
-    def encode_with_sig(self, v: int, r: bytes, s: bytes) -> bytes:
+    def encode(self, v: int, r: bytes, s: bytes) -> bytes:
         """
         Encodes the SetCodeTx into its raw, signed RLP format, ready for broadcasting to the network.
         Includes the signature components (v, r, s).
@@ -258,6 +247,6 @@ class SetCodeTx:
         # RLP-encodes the transaction components along with the signature (v, r, s).
         # The '\x04' prefix denotes a Type 4 (custom SetCode) transaction.
         return b'\x04' + rlp.encode(
-            [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip, self.tx_params.gas_fee,
+            [self.tx_params.chain_id, self.tx_params.nonce, self.tx_params.gas_tip_cap, self.tx_params.gas_fee_cap,
              self.tx_params.gas, self.tx_params.to, self.tx_params.value, self.tx_params.data, self.acc_list,
              self.set_code_auth_list, v, r, s])
