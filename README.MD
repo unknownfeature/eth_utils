@@ -1,4 +1,4 @@
-# Ethereum Interaction Library
+# Ethereum Interaction Library (WiP)
 
 This repository contains a Python library for interacting with the Ethereum blockchain, offering functionalities for sending custom transactions, deploying and interacting with smart contracts, and managing Ethereum account keys. It includes support for modern Ethereum transaction types like EIP-1559 and EIP-4844 (Blob Transactions), alongside custom transaction types.
 
